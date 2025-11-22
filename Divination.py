@@ -482,10 +482,15 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Initialize session state
+    # Initialize session state with safe defaults
     if 'quantum_ai' not in st.session_state:
         st.session_state.quantum_ai = DivineQuantumAI()
+    
+    # Initialize session state variables safely
+    if 'current_race_data' not in st.session_state:
         st.session_state.current_race_data = None
+    
+    if 'last_uploaded_file' not in st.session_state:
         st.session_state.last_uploaded_file = None
     
     st.markdown("## 📁 Cosmic PDF Upload")
@@ -517,16 +522,25 @@ def main():
                 df = pd.DataFrame(horse_data)
                 st.dataframe(df, use_container_width=True)
     
-    # Generate combinations button
-    if st.session_state.current_race_data and st.button("🎯 GENERATE QUANTUM COMBINATIONS", type="primary"):
+    # Generate combinations button - SAFE CHECK
+    show_generate_button = (
+        st.session_state.current_race_data is not None and 
+        len(st.session_state.current_race_data.get('horses', [])) > 0
+    )
+    
+    if show_generate_button and st.button("🎯 GENERATE QUANTUM COMBINATIONS", type="primary"):
         race_data = st.session_state.current_race_data
         
         with st.expander("⚛️ QUANTUM INTELLIGENCE ANALYSIS", expanded=True):
             col1, col2, col3, col4 = st.columns(4)
-            with col1: st.metric("Horses Analyzed", len(race_data['horses']))
-            with col2: st.metric("Data Intelligence", "843K+", "Patterns")
-            with col3: st.metric("French Racing DNA", "100%", "Authentic")
-            with col4: st.metric("Analysis Complete", "✅", "Ready")
+            with col1: 
+                st.metric("Horses Analyzed", len(race_data['horses']))
+            with col2: 
+                st.metric("Data Intelligence", "843K+", "Patterns")
+            with col3: 
+                st.metric("French Racing DNA", "100%", "Authentic")
+            with col4: 
+                st.metric("Analysis Complete", "✅", "Ready")
             
             # Generate REAL intelligent combinations from ACTUAL PDF data
             with st.spinner("🧠 Quantum AI analyzing race patterns..."):
@@ -551,7 +565,7 @@ def main():
             
             # Display intelligent combinations
             st.markdown("### 🏆 QUANTUM COMBINATIONS")
-            # FIXED LINE: Added missing closing parenthesis
+            # FIXED: Added missing closing parenthesis
             st.info(f"🎯 Generated {len(combinations)} intelligent combinations from {len(race_data['horses'])} horses")
             
             cols = st.columns(2)
@@ -568,11 +582,18 @@ def main():
                     <p style="font-size: 0.9rem; color: #666;">{combo['reasoning']}</p>
                     </div>
                     """, unsafe_allow_html=True)
+    
+    # Show message if no PDF uploaded yet
+    elif not show_generate_button:
+        st.info("📁 Please upload a JH_PMUB PDF file to begin quantum analysis")
 
     with st.sidebar:
         st.markdown("## ⚛️ QUANTUM CONTROL")
         st.markdown("### 🌌 SYSTEM STATUS")
-        if st.session_state.current_race_data:
+        
+        # SAFE session state access
+        if (st.session_state.current_race_data is not None and 
+            len(st.session_state.current_race_data.get('horses', [])) > 0):
             st.success(f"**Horses Loaded:** {len(st.session_state.current_race_data['horses'])}")
         else:
             st.warning("**Awaiting PDF Upload**")
@@ -581,7 +602,8 @@ def main():
         st.info("PDF Parser: **READY**")
         st.info("Intelligence: **REAL**")
         
-        if st.button("🔄 Process New PDF", use_container_width=True):
+        if st.button("🔄 Clear & Process New PDF", use_container_width=True):
+            # Safe session state clearing
             st.session_state.current_race_data = None
             st.session_state.last_uploaded_file = None
             st.rerun()
