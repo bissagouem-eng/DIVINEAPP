@@ -551,7 +551,8 @@ def main():
             
             # Display intelligent combinations
             st.markdown("### 🏆 QUANTUM COMBINATIONS")
-            st.info(f"🎯 Generated {len(combinations)} intelligent combinations from {len(race_data['horses']} horses")
+            # FIXED LINE: Added missing closing parenthesis
+            st.info(f"🎯 Generated {len(combinations)} intelligent combinations from {len(race_data['horses'])} horses")
             
             cols = st.columns(2)
             for idx, combo in enumerate(combinations[:12]):  # Show top 12
