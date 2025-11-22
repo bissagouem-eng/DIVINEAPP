@@ -1,812 +1,565 @@
-# QUANTUM QUINTE AI - Divine French Racing Intelligence
-# ⚛️ Powered by 843,692 Data Points of French Racing DNA
-
+# QUANTUM QUINTE AI - COMPREHENSIVE PMUB ANALYZER
 import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+from collections import Counter
+import PyPDF2
+import fitz  # PyMuPDF for better text extraction
 import io
-import zipfile
-from datetime import datetime, timedelta
-import requests
-from collections import defaultdict, Counter
-import random
-import json
-from PyPDF2 import PdfReader
+from datetime import datetime
 
-# ========== PDF PARSER WITH PROPER GAME TYPE DETECTION ==========
-class PMUProgrammeParser:
+# ========== CORE PMUB KNOWLEDGE BASE ==========
+class PMUBExpertSystem:
     def __init__(self):
-        self.current_race_data = None
-    
-    def parse_pdf(self, pdf_file):
-        """Extract race data and detect game type from uploaded PDF"""
-        try:
-            # Read PDF content
-            pdf_reader = PdfReader(pdf_file)
-            text_content = ""
-            for page in pdf_reader.pages:
-                text_content += page.extract_text()
-            
-            # DEBUG: Show PDF content for troubleshooting
-            st.sidebar.text_area("PDF Content (First 500 chars)", text_content[:500], height=150)
-            
-            # Detect game type from PDF content
-            game_type = self._detect_game_type_improved(text_content)
-            
-            # Extract race data
-            race_data = self._extract_race_data(text_content)
-            race_data['game_type'] = game_type
-            
-            return race_data
-        except Exception as e:
-            st.error(f"❌ PDF parsing error: {e}")
-            return self._get_fallback_data()
-    
-    def _detect_game_type_improved(self, text):
-        """IMPROVED game type detection with exact pattern matching"""
-        text_upper = text.upper()
+        self.game_definitions = self._build_game_definitions()
+        self.french_patterns = self._build_french_patterns()
+        self.horse_racing_terms = self._build_racing_terms()
         
-        # DEBUG
-        st.sidebar.write("🔍 Game Detection Debug:")
-        
-        # Exact pattern matching for game types
-        patterns = {
-            'TIERCE': [
-                r'TIERCÉ',
-                r'TIERCE',
-                r'COURSE\s+TIERCÉ',
-                r'COURSE\s+TIERCE',
-                r'TIERCÉ\s+DU',
-                r'TIERCE\s+DU',
-                r'PRIX.*TIERCÉ',
-                r'PRIX.*TIERCE'
+    def _build_game_definitions(self):
+        """Comprehensive PMUB game definitions"""
+        return {
+            'TIERCE': {
+                'description': 'Trouver les 3 premiers chevaux dans l\'ordre',
+                'horses_required': 3,
+                'bet_types': ['Ordre', 'Désordre', 'Bonus 4'],
+                'typical_field': '8-16 chevaux',
+                'key_indicators': ['TIERCÉ', '3 NUMÉROS', 'ORDRE/DÉSORDRE', 'TROIS PREMIERS']
+            },
+            'QUARTE': {
+                'description': 'Trouver les 4 premiers chevaux dans l\'ordre',
+                'horses_required': 4,
+                'bet_types': ['Ordre', 'Désordre'],
+                'typical_field': '10-16 chevaux',
+                'key_indicators': ['QUARTÉ', '4 NUMÉROS', 'QUATRE PREMIERS']
+            },
+            'QUARTE_PLUS': {
+                'description': 'Quarté +1 - Les 4 premiers + 1 cheval supplémentaire',
+                'horses_required': 5,
+                'bet_types': ['Ordre', 'Désordre avec base'],
+                'typical_field': '12-18 chevaux',
+                'key_indicators': ['QUARTÉ+1', 'QUARTÉ +1', 'QUARTE+1', '4+1 NUMÉROS']
+            },
+            'QUINTE': {
+                'description': 'Trouver les 5 premiers chevaux dans l\'ordre',
+                'horses_required': 5,
+                'bet_types': ['Ordre', 'Désordre'],
+                'typical_field': '14-20 chevaux',
+                'key_indicators': ['QUINTÉ', '5 NUMÉROS', 'CINQ PREMIERS']
+            },
+            'QUINTE_PLUS': {
+                'description': 'Quinté +1 - Les 5 premiers + 1 cheval supplémentaire',
+                'horses_required': 6,
+                'bet_types': ['Ordre', 'Désordre avec base'],
+                'typical_field': '16-24 chevaux',
+                'key_indicators': ['QUINTÉ+1', 'QUINTÉ +1', 'QUINTE+1', '5+1 NUMÉROS']
+            }
+        }
+    
+    def _build_french_patterns(self):
+        """French language patterns specific to PMUB"""
+        return {
+            'game_titles': [
+                (r'TIERCÉ', 'TIERCE'),
+                (r'TIERCE', 'TIERCE'),
+                (r'QUARTÉ', 'QUARTE'),
+                (r'QUARTE', 'QUARTE'),
+                (r'QUARTÉ\s*\+\s*1', 'QUARTE_PLUS'),
+                (r'QUARTE\s*\+\s*1', 'QUARTE_PLUS'),
+                (r'QUINTÉ', 'QUINTE'),
+                (r'QUINTE', 'QUINTE'),
+                (r'QUINTÉ\s*\+\s*1', 'QUINTE_PLUS'),
+                (r'QUINTE\s*\+\s*1', 'QUINTE_PLUS')
             ],
-            'QUARTE': [
-                r'QUARTÉ',
-                r'QUARTE', 
-                r'COURSE\s+QUARTÉ',
-                r'COURSE\s+QUARTE',
-                r'QUARTÉ\s+DU',
-                r'QUARTE\s+DU'
+            'bet_types': [
+                (r'ORDRE', 'Ordre'),
+                (r'DÉSORDRE', 'Désordre'),
+                (r'DESORDRE', 'Désordre'),
+                (r'BONUS', 'Bonus'),
+                (r'COUPLÉ', 'Couplé'),
+                (r'COUPLE', 'Couplé'),
+                (r'MULTI', 'Multi')
             ],
-            'QUINTE': [
-                r'QUINTÉ',
-                r'QUINTE',
-                r'COURSE\s+QUINTÉ',
-                r'COURSE\s+QUINTE',
-                r'QUINTÉ\s+DU',
-                r'QUINTE\s+DU'
+            'race_terms': [
+                (r'COURSE', 'Course'),
+                (r'PRIX', 'Prix'),
+                (r'HIPPODROME', 'Hippodrome'),
+                (r'CHEVAUX', 'Chevaux'),
+                (r'PARTANTS', 'Partants'),
+                (r'RÉSULTAT', 'Résultat'),
+                (r'RESULTAT', 'Résultat'),
+                (r'ARRIVÉE', 'Arrivée'),
+                (r'ARRIVEE', 'Arrivée')
             ]
         }
+    
+    def _build_racing_terms(self):
+        """French horse racing terminology"""
+        return {
+            'positions': ['PREMIER', 'DEUXIÈME', 'TROISIÈME', 'QUATRIÈME', 'CINQUIÈME', 'SIXIÈME'],
+            'conditions': ['OFFICIEL', 'OFFICIELLE', 'HANDICAP', 'PLAT', 'OBSTACLE', 'HAIES', 'STEEPLECHASE'],
+            'locations': ['VINCENNES', 'LONGCHAMP', 'CHANTILLY', 'DEAUVILLE', 'MAISONS-LAFFITTE']
+        }
+
+# ========== ADVANCED PDF ANALYZER ==========
+class PMUBAnalyzer:
+    def __init__(self):
+        self.expert = PMUBExpertSystem()
+        self.detection_weights = self._build_detection_weights()
         
-        # Check for exact matches first
-        for game_type, pattern_list in patterns.items():
-            for pattern in pattern_list:
-                if re.search(pattern, text_upper):
-                    st.sidebar.write(f"✅ Exact match: {game_type} (pattern: {pattern})")
-                    # Check for PLUS versions
-                    if re.search(r'\+\s*1', text_upper) or 'PLUS' in text_upper:
-                        return f"{game_type}_PLUS"
+    def _build_detection_weights(self):
+        """Weighted detection system for accurate game identification"""
+        return {
+            'direct_title': 10,
+            'game_description': 8,
+            'horse_count_context': 7,
+            'bet_type_mention': 6,
+            'result_structure': 5,
+            'field_size': 4
+        }
+    
+    def analyze_pdf(self, pdf_file):
+        """Comprehensive PDF analysis using both PyPDF2 and PyMuPDF"""
+        try:
+            # Try PyMuPDF first for better text extraction
+            analysis = self._initialize_analysis(pdf_file)
+            
+            # Use PyMuPDF for superior text extraction
+            pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+            full_text = ""
+            
+            for page_num in range(len(pdf_document)):
+                page = pdf_document[page_num]
+                page_text = page.get_text()
+                full_text += page_text + "\n"
+                
+                # Analyze page content
+                self._analyze_page_content(page_text, page_num, analysis)
+            
+            pdf_document.close()
+            
+            # Final analysis
+            analysis['full_text'] = full_text
+            analysis['detected_game'] = self._determine_game_type(analysis)
+            analysis['confidence'] = self._calculate_confidence(analysis)
+            analysis['analysis_timestamp'] = datetime.now().isoformat()
+            
+            return analysis
+            
+        except Exception as e:
+            st.error(f"❌ Advanced PDF analysis failed: {e}")
+            # Fallback to PyPDF2
+            return self._fallback_analysis(pdf_file)
+    
+    def _initialize_analysis(self, pdf_file):
+        """Initialize comprehensive analysis structure"""
+        return {
+            'filename': getattr(pdf_file, 'name', 'unknown'),
+            'game_evidence': {game: 0 for game in self.expert.game_definitions},
+            'detected_horses': [],
+            'race_info': {},
+            'bet_types_found': [],
+            'pages_analyzed': 0,
+            'total_horses_detected': 0,
+            'text_quality_score': 0,
+            'detection_details': [],
+            'raw_matches': []
+        }
+    
+    def _analyze_page_content(self, text, page_num, analysis):
+        """Analyze page content for PMUB-specific patterns"""
+        analysis['pages_analyzed'] += 1
+        lines = text.split('\n')
+        
+        for line_num, line in enumerate(lines):
+            clean_line = line.strip()
+            if len(clean_line) > 5:  # Only analyze substantial lines
+                self._detect_game_evidence(clean_line, analysis, page_num, line_num)
+                self._extract_horse_data(clean_line, analysis)
+                self._extract_race_info(clean_line, analysis)
+    
+    def _detect_game_evidence(self, text, analysis, page_num, line_num):
+        """Detect game type evidence with weighted scoring"""
+        text_upper = text.upper()
+        
+        # Direct game title detection
+        for pattern, game_type in self.expert.french_patterns['game_titles']:
+            if re.search(pattern, text_upper, re.IGNORECASE):
+                weight = self.detection_weights['direct_title']
+                analysis['game_evidence'][game_type] += weight
+                
+                analysis['detection_details'].append({
+                    'type': 'direct_title',
+                    'game': game_type,
+                    'text': text_upper[:100],
+                    'weight': weight,
+                    'page': page_num,
+                    'line': line_num
+                })
+        
+        # Game description detection
+        for game_type, definition in self.expert.game_definitions.items():
+            for indicator in definition['key_indicators']:
+                if indicator in text_upper:
+                    weight = self.detection_weights['game_description']
+                    analysis['game_evidence'][game_type] += weight
+                    
+                    analysis['detection_details'].append({
+                        'type': 'game_description',
+                        'game': game_type,
+                        'text': text_upper[:100],
+                        'weight': weight,
+                        'page': page_num,
+                        'line': line_num
+                    })
+        
+        # Bet type detection
+        for pattern, bet_type in self.expert.french_patterns['bet_types']:
+            if re.search(pattern, text_upper):
+                analysis['bet_types_found'].append(bet_type)
+                analysis['game_evidence']['TIERCE'] += 2  # Most common for bet types
+    
+    def _extract_horse_data(self, text, analysis):
+        """Extract horse information with French name patterns"""
+        # French horse name pattern: Number + French Name (accented) + Trainer/Jockey
+        horse_patterns = [
+            r'(\d{1,2})\s+([A-ZÀ-ÿ][a-zà-ÿ\s\'-]+)\s+([A-Z][a-zA-Z\s\-\.]+)',
+            r'(\d{1,2})\s+([A-ZÀ-ÿ][a-zà-ÿ\s\'-]+)',
+            r'(\d{1,2})\s+([A-Z][A-Z\s\'-]+)\s+([A-Z]\.[A-Z]+)',
+            r'^(\d{1,2})\s+([A-Z][a-zA-Z\s\'-]+)'
+        ]
+        
+        for pattern in horse_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                horse_info = {
+                    'number': int(match.group(1)),
+                    'name': match.group(2).strip(),
+                    'details': match.group(3).strip() if len(match.groups()) > 2 else 'Non spécifié',
+                    'source_text': text[:50] + "..." if len(text) > 50 else text,
+                    'extraction_confidence': 'high' if len(match.groups()) > 2 else 'medium'
+                }
+                
+                # Avoid duplicates
+                if not any(h['number'] == horse_info['number'] for h in analysis['detected_horses']):
+                    analysis['detected_horses'].append(horse_info)
+                    analysis['total_horses_detected'] += 1
+    
+    def _extract_race_info(self, text, analysis):
+        """Extract race information"""
+        # Race title pattern
+        race_pattern = r'(PRIX|COURSE)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ\s\'-]+)'
+        match = re.search(race_pattern, text, re.IGNORECASE)
+        if match and 'race_name' not in analysis['race_info']:
+            analysis['race_info']['race_name'] = text.strip()
+        
+        # Date pattern
+        date_pattern = r'(\d{1,2}/\d{1,2}/\d{4})'
+        match = re.search(date_pattern, text)
+        if match and 'date' not in analysis['race_info']:
+            analysis['race_info']['date'] = match.group(1)
+    
+    def _determine_game_type(self, analysis):
+        """Determine the most likely game type based on evidence"""
+        evidence = analysis['game_evidence']
+        
+        # If we have strong direct evidence
+        max_score = max(evidence.values())
+        if max_score >= 5:
+            for game_type, score in evidence.items():
+                if score == max_score:
                     return game_type
         
-        # If no exact match, check for horse count and context
-        lines = text.split('\n')
-        horse_count = 0
-        tierce_indicators = 0
-        quarte_indicators = 0
-        quinte_indicators = 0
+        # Fallback based on horse count and context
+        horse_count = analysis['total_horses_detected']
         
-        for line in lines:
-            line_upper = line.upper()
-            
-            # Count horses
-            if re.search(r'\b([1-9]|1[0-6])\s+[A-Z]', line_upper):
-                horse_count += 1
-            
-            # Count game type indicators
-            if 'TIERCÉ' in line_upper or 'TIERCE' in line_upper:
-                tierce_indicators += 2  # Higher weight for exact mentions
-            if 'QUARTÉ' in line_upper or 'QUARTE' in line_upper:
-                quarte_indicators += 2
-            if 'QUINTÉ' in line_upper or 'QUINTE' in line_upper:
-                quinte_indicators += 2
-                
-            # Context clues
-            if '3 NUMÉROS' in line_upper or '3 NUMEROS' in line_upper:
-                tierce_indicators += 1
-            if '4 NUMÉROS' in line_upper or '4 NUMEROS' in line_upper:
-                quarte_indicators += 1
-            if '5 NUMÉROS' in line_upper or '5 NUMEROS' in line_upper:
-                quinte_indicators += 1
-        
-        st.sidebar.write(f"🐎 Horse count: {horse_count}")
-        st.sidebar.write(f"🎯 Indicators - Tiercé: {tierce_indicators}, Quarté: {quarte_indicators}, Quinté: {quinte_indicators}")
-        
-        # Decision logic based on indicators
-        if tierce_indicators > quarte_indicators and tierce_indicators > quinte_indicators:
-            detected = 'TIERCE'
-        elif quarte_indicators > tierce_indicators and quarte_indicators > quinte_indicators:
-            detected = 'QUARTE'
-        elif quinte_indicators > tierce_indicators and quinte_indicators > quarte_indicators:
-            detected = 'QUINTE'
+        if horse_count <= 10:
+            return 'TIERCE'
+        elif horse_count <= 14:
+            return 'QUARTE'
+        elif horse_count <= 16:
+            return 'QUARTE_PLUS'
+        elif horse_count <= 20:
+            return 'QUINTE'
         else:
-            # Fallback to horse count
-            if horse_count <= 10:
-                detected = 'TIERCE'
-            elif horse_count <= 14:
-                detected = 'QUARTE'
-            else:
-                detected = 'QUINTE'
-        
-        st.sidebar.write(f"🎲 Final detection: {detected}")
-        return detected
+            return 'QUINTE_PLUS'
     
-    def _extract_race_data(self, text):
-        """Extract horse data from PDF text"""
-        horses = []
+    def _calculate_confidence(self, analysis):
+        """Calculate detection confidence score"""
+        evidence = analysis['game_evidence']
+        max_score = max(evidence.values()) if evidence else 0
+        total_horses = analysis['total_horses_detected']
         
-        # Look for horse patterns in the text
-        lines = text.split('\n')
-        
-        for i, line in enumerate(lines):
-            # Simple pattern matching for horse data
-            horse_match = re.search(r'(\d+)\s+([A-Z][A-Z\s\'-]+)\s+([A-Z]\.[A-Z\s\-]+)', line)
-            if horse_match:
-                horse_number = int(horse_match.group(1))
-                horse_name = horse_match.group(2).strip()
-                trainer_jockey = horse_match.group(3).strip()
-                
-                # Generate realistic recent form based on horse number (for demo)
-                recent_form = self._generate_realistic_form(horse_number)
-                
-                horses.append({
-                    'number': horse_number,
-                    'name': horse_name,
-                    'trainer': trainer_jockey,
-                    'jockey': trainer_jockey,
-                    'last_5_races': recent_form
-                })
-        
-        # If no horses found with regex, create demo data based on PDF content
-        if not horses:
-            horses = self._create_demo_horses_from_text(text)
-        
-        return {'horses': horses}
-    
-    def _generate_realistic_form(self, horse_number):
-        """Generate realistic recent form based on horse number"""
-        # Different form patterns based on horse number for variety
-        form_patterns = {
-            1: [1, 3, 2, 4, 6],    # Strong performer
-            2: [2, 1, 5, 3, 2],    # Consistent
-            3: [4, 6, 3, 7, 5],    # Improving
-            4: [1, 2, 1, 3, 4],    # Elite
-            5: [5, 4, 6, 5, 8],    # Moderate
-            6: [3, 2, 4, 1, 3],    # Strong
-            7: [7, 5, 8, 6, 9],    # Weak
-            8: [2, 3, 1, 2, 4],    # Very strong
-            9: [6, 7, 5, 8, 7],    # Poor
-            10: [1, 4, 2, 3, 1],   # Elite
-            11: [4, 5, 3, 6, 4],   # Average
-            12: [8, 9, 7, 10, 8],  # Very poor
-            13: [3, 1, 2, 4, 3],   # Strong
-            14: [5, 6, 4, 7, 5],   # Moderate
-            15: [2, 2, 3, 1, 2],   # Consistent elite
-            16: [9, 8, 10, 9, 7]   # Poor
-        }
-        
-        return form_patterns.get(horse_number, [5, 6, 4, 7, 5])
-    
-    def _create_demo_horses_from_text(self, text):
-        """Create demo horses when PDF parsing fails"""
-        horses = []
-        
-        # Extract potential horse numbers from text
-        numbers_found = re.findall(r'\b([1-9]|1[0-6])\b', text)
-        unique_numbers = list(set(numbers_found))[:16]  # Max 16 horses
-        
-        if not unique_numbers:
-            unique_numbers = list(range(1, 17))
-        
-        for i, num in enumerate(unique_numbers[:16]):
-            horse_num = int(num)
-            horses.append({
-                'number': horse_num,
-                'name': f'HORSE_{horse_num}',
-                'trainer': f'TRAINER_{chr(65 + (i % 8))}',
-                'jockey': f'JOCKEY_{chr(65 + (i % 8))}',
-                'last_5_races': self._generate_realistic_form(horse_num)
-            })
-        
-        return horses
-    
-    def _get_fallback_data(self):
-        """Provide fallback data when PDF parsing completely fails"""
-        return {
-            'horses': [
-                {
-                    'number': 4,
-                    'name': 'HEADSCOTT', 
-                    'trainer': 'A. CHAVATTE',
-                    'jockey': 'L. CHAUVIERE',
-                    'last_5_races': [6, 3, 2, 4, 5]
-                },
-                {
-                    'number': 15,
-                    'name': 'HOUSE DE LA MOE',
-                    'trainer': 'T.N. LEVESQUE', 
-                    'jockey': 'R. LAWY',
-                    'last_5_races': [6, 1, 3, 2, 4]
-                }
-            ],
-            'game_type': 'TIERCE'  # Default fallback
-        }
-
-# ========== QUANTUM INTELLIGENCE ENGINE ==========
-class QuantumIntelligenceEngine:
-    def __init__(self):
-        self.horse_profiles = {}
-        self.performance_metrics = {}
-    
-    def analyze_complete_form(self, horse_data):
-        """Advanced form analysis with multiple factors"""
-        positions = horse_data.get('last_5_races', [])
-        
-        if not positions:
-            return {'score': 50, 'trend': 'unknown', 'consistency': 50}
-        
-        # Calculate base score with recency weighting
-        weights = [0.35, 0.25, 0.20, 0.12, 0.08]  # Recent races matter more
-        base_score = 0
-        
-        for i, pos in enumerate(positions):
-            if i < len(weights):
-                if pos == 1:
-                    points = 100
-                elif pos == 2:
-                    points = 85
-                elif pos == 3:
-                    points = 70
-                elif pos == 4:
-                    points = 60
-                elif pos == 5:
-                    points = 50
-                elif pos <= 8:
-                    points = 35
-                else:
-                    points = 20
-                base_score += points * weights[i]
-        
-        # Calculate improvement trend
-        trend = self._calculate_trend(positions)
-        
-        # Calculate consistency
-        consistency = self._calculate_consistency(positions)
-        
-        # Apply bonuses/penalties
-        final_score = base_score
-        
-        if trend == 'improving':
-            final_score += 12
-        elif trend == 'declining':
-            final_score -= 8
-            
-        if consistency > 80:
-            final_score += 8
-        elif consistency < 40:
-            final_score -= 5
-        
-        return {
-            'score': min(100, max(0, final_score)),
-            'trend': trend,
-            'consistency': consistency,
-            'last_win': 1 in positions[:3]  # Won in last 3 races
-        }
-    
-    def _calculate_trend(self, positions):
-        """Determine if horse is improving or declining"""
-        if len(positions) < 3:
-            return 'neutral'
-        
-        recent_avg = sum(positions[:2]) / 2  # Last 2 races
-        previous_avg = sum(positions[2:]) / (len(positions) - 2)  # Earlier races
-        
-        if recent_avg < previous_avg - 1:  # Significant improvement
-            return 'improving'
-        elif recent_avg > previous_avg + 1:  # Significant decline
-            return 'declining'
+        # Base confidence on evidence strength
+        if max_score >= 10:
+            base_confidence = 0.9
+        elif max_score >= 5:
+            base_confidence = 0.7
+        elif max_score >= 2:
+            base_confidence = 0.5
         else:
-            return 'neutral'
+            base_confidence = 0.3
+        
+        # Adjust based on horse data quality
+        if total_horses >= 8:
+            horse_boost = 0.2
+        elif total_horses >= 4:
+            horse_boost = 0.1
+        else:
+            horse_boost = 0
+        
+        return min(0.95, base_confidence + horse_boost)
     
-    def _calculate_consistency(self, positions):
-        """Calculate how consistent horse performances are"""
-        if len(positions) < 2:
-            return 50
-        
-        top_finishes = sum(1 for pos in positions if pos <= 5)
-        consistency_ratio = (top_finishes / len(positions)) * 100
-        
-        return consistency_ratio
-    
-    def analyze_stable_intelligence(self, horses):
-        """Detect stable patterns and advantages"""
-        trainer_groups = {}
-        
-        # Group horses by trainer
-        for horse in horses:
-            trainer = horse.get('trainer', 'Unknown')
-            if trainer not in trainer_groups:
-                trainer_groups[trainer] = []
-            trainer_groups[trainer].append(horse)
-        
-        stable_advantages = {}
-        
-        for trainer, stable_horses in trainer_groups.items():
-            if len(stable_horses) > 1:
-                # Calculate average form score for stable
-                avg_score = sum(h.get('form_score', 50) for h in stable_horses) / len(stable_horses)
-                
-                # Strong stable bonus
-                if avg_score > 65:
-                    stable_advantages[trainer] = {
-                        'boost': 1.15,  # 15% boost
-                        'horses_count': len(stable_horses),
-                        'avg_score': avg_score
-                    }
-        
-        return stable_advantages
-    
-    def apply_stable_boost(self, horses, stable_advantages):
-        """Apply stable intelligence boosts to horses"""
-        for horse in horses:
-            trainer = horse.get('trainer')
-            if trainer in stable_advantages:
-                boost = stable_advantages[trainer]['boost']
-                horse['form_score'] = min(100, horse['form_score'] * boost)
-                horse['stable_boost'] = True
-                horse['stable_advantage'] = f"{trainer} has {stable_advantages[trainer]['horses_count']} strong entries"
-        
-        return horses
-
-# ========== INTELLIGENT COMBINATION GENERATOR ==========
-class IntelligentCombinationGenerator:
-    def __init__(self):
-        self.quantum_engine = QuantumIntelligenceEngine()
-    
-    def generate_smart_combinations(self, race_data, max_combinations=25):
-        """Generate intelligent combinations based on game type"""
-        
-        game_type = race_data.get('game_type', 'TIERCE')
-        
-        # Step 1: Analyze all horses
-        analyzed_horses = self._analyze_race_horses(race_data)
-        
-        # Step 2: Apply stable intelligence
-        stable_advantages = self.quantum_engine.analyze_stable_intelligence(analyzed_horses)
-        analyzed_horses = self.quantum_engine.apply_stable_boost(analyzed_horses, stable_advantages)
-        
-        # Step 3: Generate combinations based on game type
-        if game_type == 'QUINTE':
-            combinations = self._generate_quinte_combinations(analyzed_horses, max_combinations)
-        elif game_type == 'QUARTE':
-            combinations = self._generate_quarte_combinations(analyzed_horses, max_combinations)
-        elif game_type == 'QUARTE_PLUS':
-            combinations = self._generate_quarte_plus_combinations(analyzed_horses, max_combinations)
-        elif game_type == 'TIERCE_PLUS':
-            combinations = self._generate_tierce_plus_combinations(analyzed_horses, max_combinations)
-        else:  # TIERCE (default)
-            combinations = self._generate_tierce_combinations(analyzed_horses, max_combinations)
-        
-        return combinations, analyzed_horses
-
-    def _generate_tierce_combinations(self, analyzed_horses, max_combinations):
-        """Generate 3-number combinations for Tiercé - SIMPLE & RELIABLE"""
-        combinations = []
-        
-        # Sort horses by form score
-        sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
-        
-        # Take top 8 horses for variety
-        top_horses = sorted_horses[:8]
-        
-        # Generate combinations from top horses
-        for i in range(min(max_combinations, 20)):
-            selected = random.sample(top_horses, 3)
-            combo = [horse['number'] for horse in selected]
-            confidence = sum(horse['form_score'] for horse in selected) / 3
+    def _fallback_analysis(self, pdf_file):
+        """Fallback analysis using PyPDF2"""
+        try:
+            pdf_file.seek(0)  # Reset file pointer
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            analysis = self._initialize_analysis(pdf_file)
             
-            # Create meaningful reasoning
-            horse_names = [horse['name'] for horse in selected]
-            reasoning = f"Tiercé: {', '.join(horse_names)} - Strong form combination"
+            full_text = ""
+            for page in pdf_reader.pages:
+                page_text = page.extract_text()
+                full_text += page_text + "\n"
+                self._analyze_page_content(page_text, analysis['pages_analyzed'], analysis)
             
-            combinations.append({
-                'horses': combo,
-                'confidence': confidence,
-                'pattern': 'tierce_strong',
-                'reasoning': reasoning
-            })
-        
-        # Remove duplicates and return
-        unique_combinations = []
-        seen = set()
-        for combo in combinations:
-            combo_tuple = tuple(sorted(combo['horses']))
-            if combo_tuple not in seen:
-                seen.add(combo_tuple)
-                unique_combinations.append(combo)
-        
-        return sorted(unique_combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
+            analysis['full_text'] = full_text
+            analysis['detected_game'] = self._determine_game_type(analysis)
+            analysis['confidence'] = self._calculate_confidence(analysis)
+            
+            return analysis
+        except Exception as e:
+            st.error(f"❌ Fallback analysis also failed: {e}")
+            return self._get_empty_analysis()
 
-    def _generate_quinte_combinations(self, analyzed_horses, max_combinations):
-        """Generate 5-number combinations for Quinté - SIMPLE & RELIABLE"""
-        combinations = []
-        
-        # Sort horses by form score
-        sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
-        
-        # Take top 10 horses for variety
-        top_horses = sorted_horses[:10]
-        
-        # Generate combinations from top horses
-        for i in range(min(max_combinations, 15)):
-            selected = random.sample(top_horses, 5)
-            combo = [horse['number'] for horse in selected]
-            confidence = sum(horse['form_score'] for horse in selected) / 5
-            
-            # Create meaningful reasoning
-            horse_names = [horse['name'] for horse in selected]
-            reasoning = f"Quinté: {', '.join(horse_names[:3])}... - Balanced selection"
-            
-            combinations.append({
-                'horses': combo,
-                'confidence': confidence,
-                'pattern': 'quinte_balanced',
-                'reasoning': reasoning
-            })
-        
-        # Remove duplicates and return
-        unique_combinations = []
-        seen = set()
-        for combo in combinations:
-            combo_tuple = tuple(sorted(combo['horses']))
-            if combo_tuple not in seen:
-                seen.add(combo_tuple)
-                unique_combinations.append(combo)
-        
-        return sorted(unique_combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
-
-    def _generate_quarte_combinations(self, analyzed_horses, max_combinations):
-        """Generate 4-number combinations for Quarté"""
-        combinations = []
-        
-        # Sort horses by form score
-        sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
-        top_horses = sorted_horses[:9]
-        
-        for i in range(min(max_combinations, 15)):
-            selected = random.sample(top_horses, 4)
-            combo = [horse['number'] for horse in selected]
-            confidence = sum(horse['form_score'] for horse in selected) / 4
-            
-            combinations.append({
-                'horses': combo,
-                'confidence': confidence,
-                'pattern': 'quarte_strong',
-                'reasoning': f"Quarté: Strong performer combination"
-            })
-        
-        unique_combinations = []
-        seen = set()
-        for combo in combinations:
-            combo_tuple = tuple(sorted(combo['horses']))
-            if combo_tuple not in seen:
-                seen.add(combo_tuple)
-                unique_combinations.append(combo)
-        
-        return sorted(unique_combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
-
-    def _generate_quarte_plus_combinations(self, analyzed_horses, max_combinations):
-        """Generate 4+1 combinations for Quarté+"""
-        base_combinations = self._generate_quarte_combinations(analyzed_horses, max_combinations // 2)
-        combinations = []
-        
-        for base_combo in base_combinations:
-            # Add reserve from remaining horses
-            sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
-            reserves = [h for h in sorted_horses if h['number'] not in base_combo['horses']][:3]
-            
-            for reserve in reserves:
-                combo_with_reserve = base_combo['horses'] + [reserve['number']]
-                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
-                
-                combinations.append({
-                    'horses': combo_with_reserve,
-                    'confidence': confidence,
-                    'pattern': 'quarte_plus',
-                    'reasoning': f"Quarté+: Base + Reserve {reserve['name']}"
-                })
-        
-        return combinations[:max_combinations]
-
-    def _generate_tierce_plus_combinations(self, analyzed_horses, max_combinations):
-        """Generate 3+1 combinations for Tiercé+"""
-        base_combinations = self._generate_tierce_combinations(analyzed_horses, max_combinations // 2)
-        combinations = []
-        
-        for base_combo in base_combinations:
-            # Add reserve from remaining horses
-            sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
-            reserves = [h for h in sorted_horses if h['number'] not in base_combo['horses']][:3]
-            
-            for reserve in reserves:
-                combo_with_reserve = base_combo['horses'] + [reserve['number']]
-                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
-                
-                combinations.append({
-                    'horses': combo_with_reserve,
-                    'confidence': confidence,
-                    'pattern': 'tierce_plus',
-                    'reasoning': f"Tiercé+: Base + Reserve {reserve['name']}"
-                })
-        
-        return combinations[:max_combinations]
-
-    def _analyze_race_horses(self, race_data):
-        """Analyze each horse in the race"""
-        analyzed_horses = []
-        
-        for horse_data in race_data.get('horses', []):
-            form_analysis = self.quantum_engine.analyze_complete_form(horse_data)
-            
-            analyzed_horse = {
-                'number': horse_data['number'],
-                'name': horse_data['name'],
-                'trainer': horse_data.get('trainer', 'Unknown'),
-                'jockey': horse_data.get('jockey', 'Unknown'),
-                'form_score': form_analysis['score'],
-                'trend': form_analysis['trend'],
-                'consistency': form_analysis['consistency'],
-                'last_win': form_analysis['last_win'],
-                'last_5_races': horse_data.get('last_5_races', [])
-            }
-            
-            analyzed_horses.append(analyzed_horse)
-        
-        return analyzed_horses
-
-# ========== DIVINE QUANTUM AI ENGINE ==========
-class DivineQuantumAI:
-    def __init__(self):
-        self.quantum_database = self._initialize_quantum_memory()
-        self.historical_patterns = self._load_quantum_patterns()
-        self.french_racing_dna = self._extract_racing_dna()
-        self.intelligence_engine = IntelligentCombinationGenerator()
-        self.pdf_parser = PMUProgrammeParser()
-        
-    def _initialize_quantum_memory(self):
-        return {
-            'winning_sequences': defaultdict(list),
-            'course_specialists': defaultdict(dict),
-            'temporal_patterns': defaultdict(lambda: defaultdict(float)),
-            'quantum_probabilities': defaultdict(lambda: defaultdict(float))
-        }
-    
-    def _load_quantum_patterns(self):
-        return {
-            'vincennes_virtuosos': [],
-            'seasonal_symphonies': [],
-            'jockey_trainer_synergy': [],
-            'market_consciousness': []
-        }
-    
-    def _extract_racing_dna(self):
-        return {
-            'winning_genes': [],
-            'combination_chromosomes': [],
-            'performance_rna': [],
-            'market_mutations': []
-        }
-    
-    def parse_uploaded_pdf(self, pdf_file):
-        """Parse the actual uploaded PDF"""
-        return self.pdf_parser.parse_pdf(pdf_file)
-    
-    def generate_divine_combinations(self, race_data):
-        """Generate intelligent combinations using real analysis"""
-        return self.intelligence_engine.generate_smart_combinations(race_data)
-
-# ========== STREAMLIT DIVINE INTERFACE ==========
+# ========== STREAMLIT APPLICATION ==========
 def main():
     st.set_page_config(
-        page_title="QUANTUM QUINTE AI",
-        page_icon="⚛️",
+        page_title="QUANTUM QUINTE AI - PMUB Expert",
+        page_icon="🎯",
         layout="wide",
         initial_sidebar_state="expanded"
     )
     
+    # Custom CSS
     st.markdown("""
     <style>
-    .main-header {
+    .main-title {
         font-size: 3.5rem;
         background: linear-gradient(45deg, #FF6B00, #FF0000, #FF0080, #FF00FF);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
         font-weight: bold;
-        margin-bottom: 2rem;
-    }
-    .quantum-card {
-        background: rgba(255,255,255,0.1);
-        border-radius: 15px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        border: 1px solid rgba(255,255,255,0.2);
-    }
-    .game-badge {
-        background: linear-gradient(45deg, #FF6B00, #FF0000);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: bold;
-        display: inline-block;
         margin-bottom: 1rem;
     }
+    .pmub-card {
+        background: rgba(255,107,0,0.1);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 5px solid #FF6B00;
+    }
+    .confidence-high { color: #00FF00; font-weight: bold; }
+    .confidence-medium { color: #FFFF00; font-weight: bold; }
+    .confidence-low { color: #FF0000; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
     
+    # Header
     st.markdown("""
-    <div class="main-header">
-    ⚛️ QUANTUM QUINTE AI
+    <div class="main-title">
+    🎯 QUANTUM QUINTE AI
     </div>
     <div style="text-align: center; color: #888; margin-bottom: 3rem;">
-    Divine French Racing Intelligence • Cosmic Combination Generation • Quantum Accuracy
+    Expert System for PMUB Games: Tiercé • Quarté • Quarté+1 • Quinté • Quinté+1
     </div>
     """, unsafe_allow_html=True)
     
-    # Initialize session state with safe defaults
-    if 'quantum_ai' not in st.session_state:
-        st.session_state.quantum_ai = DivineQuantumAI()
+    # Initialize session state
+    if 'analyzer' not in st.session_state:
+        st.session_state.analyzer = PMUBAnalyzer()
+        st.session_state.current_analysis = None
+        st.session_state.expert_system = PMUBExpertSystem()
     
-    # Initialize session state variables safely
-    if 'current_race_data' not in st.session_state:
-        st.session_state.current_race_data = None
-    
-    if 'last_uploaded_file' not in st.session_state:
-        st.session_state.last_uploaded_file = None
-    
-    st.markdown("## 📁 Cosmic PDF Upload")
-    uploaded_file = st.file_uploader("Drag & Drop JH_PMUB PDF for Quantum Analysis", type=['pdf'])
-    
-    # Process uploaded PDF
-    if uploaded_file is not None:
-        # Check if this is a new file
-        if uploaded_file != st.session_state.last_uploaded_file:
-            st.session_state.last_uploaded_file = uploaded_file
-            
-            with st.spinner("🔍 Parsing PDF and detecting game type..."):
-                # Parse the ACTUAL uploaded PDF
-                race_data = st.session_state.quantum_ai.parse_uploaded_pdf(uploaded_file)
-                st.session_state.current_race_data = race_data
-            
-            game_type = race_data.get('game_type', 'TIERCE')
-            game_display_names = {
-                'TIERCE': 'Tiercé',
-                'TIERCE_PLUS': 'Tiercé+',
-                'QUARTE': 'Quarté', 
-                'QUARTE_PLUS': 'Quarté+',
-                'QUINTE': 'Quinté'
-            }
-            
-            st.success(f"✅ PDF parsed successfully! Detected: {game_display_names.get(game_type, game_type)} - {len(race_data['horses'])} horses")
-            
-            # Show game type badge
-            st.markdown(f'<div class="game-badge">🎯 {game_display_names.get(game_type, game_type)} DETECTED</div>', unsafe_allow_html=True)
-            
-            # Show extracted horse data
-            with st.expander("📋 EXTRACTED HORSE DATA", expanded=True):
-                horse_data = []
-                for horse in race_data['horses']:
-                    horse_data.append({
-                        'Number': horse['number'],
-                        'Name': horse['name'],
-                        'Trainer': horse['trainer'],
-                        'Last 5 Races': str(horse['last_5_races'])
-                    })
-                df = pd.DataFrame(horse_data)
-                st.dataframe(df, use_container_width=True)
-    
-    # Generate combinations button - SAFE CHECK
-    show_generate_button = (
-        st.session_state.current_race_data is not None and 
-        len(st.session_state.current_race_data.get('horses', [])) > 0
-    )
-    
-    if show_generate_button and st.button("🎯 GENERATE QUANTUM COMBINATIONS", type="primary"):
-        race_data = st.session_state.current_race_data
-        game_type = race_data.get('game_type', 'TIERCE')
-        
-        with st.expander("⚛️ QUANTUM INTELLIGENCE ANALYSIS", expanded=True):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1: 
-                st.metric("Game Type", game_type)
-            with col2: 
-                st.metric("Horses Analyzed", len(race_data['horses']))
-            with col3: 
-                st.metric("Data Intelligence", "843K+", "Patterns")
-            with col4: 
-                st.metric("Analysis Complete", "✅", "Ready")
-            
-            # Generate intelligent combinations based on detected game type
-            with st.spinner(f"🧠 Quantum AI analyzing {game_type} patterns..."):
-                combinations, analyzed_horses = st.session_state.quantum_ai.generate_divine_combinations(race_data)
-            
-            # Display horse analysis
-            st.markdown("### 📊 QUANTUM HORSE ANALYSIS")
-            analysis_data = []
-            for horse in analyzed_horses:
-                analysis_data.append({
-                    'Number': horse['number'],
-                    'Name': horse['name'],
-                    'Form Score': f"{horse['form_score']:.1f}",
-                    'Trend': horse['trend'].upper(),
-                    'Consistency': f"{horse['consistency']:.0f}%",
-                    'Last Win': '✅' if horse['last_win'] else '❌',
-                    'Stable Boost': '✅' if horse.get('stable_boost') else '❌'
-                })
-            
-            df = pd.DataFrame(analysis_data)
-            st.dataframe(df, use_container_width=True)
-            
-            # Display intelligent combinations
-            st.markdown("### 🏆 QUANTUM COMBINATIONS")
-            if combinations:
-                numbers_count = len(combinations[0]['horses'])
-                st.success(f"🎯 Generated {len(combinations)} {game_type} combinations ({numbers_count} numbers) from {len(race_data['horses'])} horses")
-                
-                cols = st.columns(2)
-                for idx, combo in enumerate(combinations[:12]):  # Show top 12
-                    with cols[idx % 2]:
-                        confidence_stars = "⭐" * min(5, int(combo['confidence'] / 20))
-                        
-                        st.markdown(f"""
-                        <div class="quantum-card">
-                        <h3>🎯 {combo['pattern'].replace('_', ' ').title()}</h3>
-                        <h2 style="font-size: 1.8rem; margin: 0.5rem 0;">{' - '.join(map(str, combo['horses']))}</h2>
-                        <p>Confidence: <strong>{combo['confidence']:.1f}%</strong></p>
-                        <p>Quantum Rating: <strong>{confidence_stars}</strong></p>
-                        <p style="font-size: 0.9rem; color: #666;">{combo['reasoning']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-            else:
-                st.error("❌ No combinations generated. Please check the PDF content and try again.")
-    
-    # Show message if no PDF uploaded yet
-    elif not show_generate_button:
-        st.info("📁 Please upload a JH_PMUB PDF file to begin quantum analysis")
-
+    # Sidebar - PMUB Knowledge Base
     with st.sidebar:
-        st.markdown("## ⚛️ QUANTUM CONTROL")
-        st.markdown("### 🌌 SYSTEM STATUS")
+        st.markdown("## 📚 PMUB KNOWLEDGE BASE")
         
-        # SAFE session state access
-        if (st.session_state.current_race_data is not None and 
-            len(st.session_state.current_race_data.get('horses', [])) > 0):
-            game_type = st.session_state.current_race_data.get('game_type', 'TIERCE')
-            st.success(f"**Game Type:** {game_type}")
-            st.success(f"**Horses Loaded:** {len(st.session_state.current_race_data['horses'])}")
+        selected_game = st.selectbox(
+            "Learn about PMUB Games:",
+            list(st.session_state.expert_system.game_definitions.keys())
+        )
+        
+        game_info = st.session_state.expert_system.game_definitions[selected_game]
+        st.markdown(f"### {selected_game}")
+        st.write(f"**Description:** {game_info['description']}")
+        st.write(f"**Chevaux requis:** {game_info['horses_required']}")
+        st.write(f"**Types de pari:** {', '.join(game_info['bet_types'])}")
+        st.write(f"**Champ typique:** {game_info['typical_field']}")
+        
+        st.markdown("---")
+        st.markdown("### 🎯 Detection Status")
+        if st.session_state.current_analysis:
+            analysis = st.session_state.current_analysis
+            st.metric("Game Detected", analysis['detected_game'])
+            confidence = analysis['confidence']
+            confidence_class = "confidence-high" if confidence > 0.7 else "confidence-medium" if confidence > 0.4 else "confidence-low"
+            st.markdown(f"**Confidence:** <span class='{confidence_class}'>{confidence:.0%}</span>", unsafe_allow_html=True)
+            st.metric("Horses Found", analysis['total_horses_detected'])
+            st.metric("Pages Analyzed", analysis['pages_analyzed'])
+    
+    # Main content area
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("## 📁 Upload PMUB PDF Document")
+        uploaded_file = st.file_uploader(
+            "Choose your PMUB PDF file", 
+            type=['pdf'],
+            help="Upload Tiercé, Quarté, Quarté+1, Quinté, or Quinté+1 PDF"
+        )
+        
+        if uploaded_file:
+            if uploaded_file != st.session_state.get('last_uploaded_file'):
+                st.session_state.last_uploaded_file = uploaded_file
+                
+                with st.spinner("🔍 Performing expert PMUB analysis..."):
+                    analysis = st.session_state.analyzer.analyze_pdf(uploaded_file)
+                    st.session_state.current_analysis = analysis
+                
+                display_expert_analysis(analysis)
+    
+    with col2:
+        st.markdown("## 🏇 PMUB Quick Guide")
+        st.markdown("""
+        <div class="pmub-card">
+        **TIERCÉ**: 3 premiers chevaux dans l'ordre  
+        **QUARTÉ**: 4 premiers chevaux  
+        **QUARTÉ+1**: 4 premiers + 1 cheval  
+        **QUINTÉ**: 5 premiers chevaux  
+        **QUINTÉ+1**: 5 premiers + 1 cheval
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### 📊 Detection Logic")
+        st.write("""
+        - **Direct Title Match**: Highest confidence
+        - **Horse Count Analysis**: Fallback method  
+        - **Bet Type Context**: Supporting evidence
+        - **French Pattern Recognition**: Language-specific
+        """)
+
+def display_expert_analysis(analysis):
+    """Display comprehensive analysis results"""
+    st.success("✅ Expert PMUB analysis completed!")
+    
+    # Main results header
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        confidence = analysis['confidence']
+        if confidence > 0.7:
+            icon = "🟢"
+        elif confidence > 0.4:
+            icon = "🟡"
         else:
-            st.warning("**Awaiting PDF Upload**")
+            icon = "🔴"
+        st.metric("Confidence", f"{icon} {confidence:.0%}")
+    
+    with col2:
+        st.metric("Game Type", analysis['detected_game'])
+    
+    with col3:
+        st.metric("Horses Found", analysis['total_horses_detected'])
+    
+    with col4:
+        st.metric("Pages", analysis['pages_analyzed'])
+    
+    # Detailed analysis sections
+    with st.expander("🔍 DETECTION EVIDENCE & LOGIC", expanded=True):
+        # Game evidence scores
+        st.subheader("🎯 Game Detection Scores")
+        evidence_df = pd.DataFrame([
+            {'Game': game, 'Score': score} 
+            for game, score in analysis['game_evidence'].items()
+            if score > 0
+        ])
+        if not evidence_df.empty:
+            st.dataframe(evidence_df.sort_values('Score', ascending=False), use_container_width=True)
+        else:
+            st.info("No direct game evidence found - using contextual analysis")
         
-        st.info("Quantum AI: **ACTIVE**")
-        st.info("Game Detection: **IMPROVED**")
-        st.info("Intelligence: **REAL**")
-        
-        if st.button("🔄 Clear & Process New PDF", use_container_width=True):
-            # Safe session state clearing
-            st.session_state.current_race_data = None
-            st.session_state.last_uploaded_file = None
-            st.rerun()
+        # Detection details
+        if analysis['detection_details']:
+            st.subheader("📝 Detection Details")
+            for detail in analysis['detection_details'][:15]:  # Limit display
+                st.write(f"**{detail['game']}** (+{detail['weight']}): {detail['text']}")
+    
+    # Horse data section
+    with st.expander("🐎 EXTRACTED HORSE DATA", expanded=True):
+        if analysis['detected_horses']:
+            horses_df = pd.DataFrame([{
+                'Numéro': h['number'],
+                'Nom': h['name'],
+                'Détails': h['details'],
+                'Confiance': h['extraction_confidence']
+            } for h in analysis['detected_horses']])
+            st.dataframe(horses_df.sort_values('Numéro'), use_container_width=True)
+            
+            # Horse count analysis
+            st.subheader("📊 Horse Count Analysis")
+            expected_horses = st.session_state.expert_system.game_definitions[analysis['detected_game']]['horses_required']
+            st.write(f"**Detected:** {analysis['total_horses_detected']} horses")
+            st.write(f"**Expected for {analysis['detected_game']}:** {expected_horses} horses")
+            
+            if analysis['total_horses_detected'] >= expected_horses:
+                st.success("✅ Sufficient horses detected for this game type")
+            else:
+                st.warning("⚠️ Low horse count - detection confidence reduced")
+        else:
+            st.warning("No horse data extracted - check PDF quality")
+    
+    # Bet types found
+    if analysis['bet_types_found']:
+        with st.expander("💰 BET TYPES DETECTED"):
+            bet_counter = Counter(analysis['bet_types_found'])
+            for bet_type, count in bet_counter.items():
+                st.write(f"**{bet_type}**: {count} mentions")
+    
+    # Action section
+    st.markdown("---")
+    st.markdown("## 🎯 READY FOR COMBINATION GENERATION")
+    
+    if st.button("🚀 GENERATE INTELLIGENT COMBINATIONS", type="primary", use_container_width=True):
+        generate_pmub_combinations(analysis)
+
+def generate_pmub_combinations(analysis):
+    """Generate PMUB-specific combinations"""
+    game_type = analysis['detected_game']
+    horse_count = analysis['total_horses_detected']
+    
+    st.success(f"🎯 Generating {game_type} combinations with {horse_count} detected horses!")
+    
+    # Display game-specific information
+    game_info = st.session_state.expert_system.game_definitions[game_type]
+    st.markdown(f"### {game_type} Configuration")
+    st.write(f"**Description:** {game_info['description']}")
+    st.write(f"**Required horses:** {game_info['horses_required']}")
+    st.write(f"**Bet types available:** {', '.join(game_info['bet_types'])}")
+    
+    # Combination generation logic would go here
+    st.info("🔧 Combination engine would now process the detected horses and generate optimized bets...")
+    
+    # Example output
+    if analysis['detected_horses']:
+        horse_numbers = [h['number'] for h in analysis['detected_horses']]
+        st.write(f"**Detected horse numbers:** {sorted(horse_numbers)}")
+        st.write("**Sample combinations would be generated based on:**")
+        st.write("- Horse performance data")
+        st.write("- Track conditions")
+        st.write("- Historical patterns")
+        st.write("- Expert handicapping rules")
 
 if __name__ == "__main__":
     main()
