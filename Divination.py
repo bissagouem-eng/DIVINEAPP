@@ -41,25 +41,40 @@ class PMUProgrammeParser:
             return self._get_fallback_data()
     
     def _detect_game_type(self, text):
-        """Detect the PMU game type from PDF text"""
+        """Detect the PMU game type from PDF text - IMPROVED VERSION"""
         text_upper = text.upper()
         
-        # Game type detection patterns
+        # More specific game type detection
         if "QUINTÉ" in text_upper or "QUINTE" in text_upper:
-            return "QUINTE"  # 5 numbers
+            # Check if it's specifically mentioned as the main game
+            if "QUINTÉ" in text_upper or "COURSE QUINTÉ" in text_upper:
+                return "QUINTE"
         elif "QUARTÉ" in text_upper or "QUARTE" in text_upper:
-            if "+" in text_upper and "1" in text_upper:
-                return "QUARTE_PLUS"  # 4 numbers + 1
+            if "+" in text_upper and ("1" in text_upper or "PLUS" in text_upper):
+                return "QUARTE_PLUS"
             else:
-                return "QUARTE"  # 4 numbers
+                return "QUARTE"
         elif "TIERCÉ" in text_upper or "TIERCE" in text_upper:
-            if "+" in text_upper and "1" in text_upper:
-                return "TIERCE_PLUS"  # 3 numbers + 1
+            if "+" in text_upper and ("1" in text_upper or "PLUS" in text_upper):
+                return "TIERCE_PLUS"
             else:
-                return "TIERCE"  # 3 numbers
-        else:
-            # Default to most common game type
+                return "TIERCE"
+        
+        # If no clear detection, look for horse count patterns
+        lines = text.split('\n')
+        horse_count = 0
+        for line in lines:
+            # Count potential horse entries
+            if re.search(r'\b([1-9]|1[0-6])\s+[A-Z]', line):
+                horse_count += 1
+        
+        # Estimate game type based on horse count
+        if horse_count >= 14:
             return "QUINTE"
+        elif horse_count >= 10:
+            return "QUARTE"
+        else:
+            return "TIERCE"  # Default to most common
     
     def _extract_race_data(self, text):
         """Extract horse data from PDF text"""
@@ -320,8 +335,243 @@ class IntelligentCombinationGenerator:
         else:  # TIERCE (default)
             combinations = self._generate_tierce_combinations(categories, max_combinations)
         
+        # FALLBACK: If no combinations generated, use flexible approach
+        if not combinations:
+            combinations = self._generate_fallback_combinations(analyzed_horses, game_type, max_combinations)
+        
         return combinations, analyzed_horses
-    
+
+    def _generate_fallback_combinations(self, analyzed_horses, game_type, max_combinations):
+        """Fallback combination generator when main logic fails"""
+        combinations = []
+        
+        # Sort horses by form score
+        sorted_horses = sorted(analyzed_horses, key=lambda x: x['form_score'], reverse=True)
+        
+        if game_type == 'QUINTE':
+            # For Quinté: take top 8 horses and generate combinations
+            top_horses = sorted_horses[:8]
+            for i in range(min(max_combinations, 20)):
+                # Create diverse combinations from top horses
+                combo = [h['number'] for h in random.sample(top_horses, 5)]
+                avg_confidence = sum(h['form_score'] for h in sorted_horses if h['number'] in combo) / 5
+                
+                combinations.append({
+                    'horses': combo,
+                    'confidence': avg_confidence,
+                    'pattern': 'quinte_fallback',
+                    'reasoning': f"Quinté fallback: Top performers combination"
+                })
+        
+        elif game_type == 'QUARTE':
+            # For Quarté: take top 7 horses
+            top_horses = sorted_horses[:7]
+            for i in range(min(max_combinations, 15)):
+                combo = [h['number'] for h in random.sample(top_horses, 4)]
+                avg_confidence = sum(h['form_score'] for h in sorted_horses if h['number'] in combo) / 4
+                
+                combinations.append({
+                    'horses': combo,
+                    'confidence': avg_confidence,
+                    'pattern': 'quarte_fallback',
+                    'reasoning': f"Quarté fallback: Strong contenders mix"
+                })
+        
+        elif game_type == 'TIERCE':
+            # For Tiercé: take top 6 horses
+            top_horses = sorted_horses[:6]
+            for i in range(min(max_combinations, 10)):
+                combo = [h['number'] for h in random.sample(top_horses, 3)]
+                avg_confidence = sum(h['form_score'] for h in sorted_horses if h['number'] in combo) / 3
+                
+                combinations.append({
+                    'horses': combo,
+                    'confidence': avg_confidence,
+                    'pattern': 'tierce_fallback',
+                    'reasoning': f"Tiercé fallback: Best performers selection"
+                })
+        
+        # Remove duplicates and sort by confidence
+        unique_combinations = []
+        seen = set()
+        for combo in combinations:
+            combo_tuple = tuple(sorted(combo['horses']))
+            if combo_tuple not in seen:
+                seen.add(combo_tuple)
+                unique_combinations.append(combo)
+        
+        return sorted(unique_combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
+
+    def _generate_quinte_combinations(self, categories, max_combinations):
+        """Generate 5-number combinations for Quinté - FIXED VERSION"""
+        combinations = []
+        
+        # Get available horses from each category
+        elites = categories['elite'][:3] if categories['elite'] else []
+        strongs = categories['strong'][:4] if categories['strong'] else []
+        contenders = categories['contenders'][:6] if categories['contenders'] else []
+        outsiders = categories['outsiders'][:3] if categories['outsiders'] else []
+        
+        # If we don't have enough horses in categories, use fallback immediately
+        all_available = elites + strongs + contenders + outsiders
+        if len(all_available) < 5:
+            return []  # Will trigger fallback
+        
+        # PATTERN 1: Balanced approach (2 elite/strong + 2 contenders + 1 outsider)
+        for i in range(min(10, max_combinations)):
+            # Select 2 from top categories
+            top_selection = random.sample(elites + strongs, min(2, len(elites + strongs)))
+            # Select 2 from contenders
+            mid_selection = random.sample(contenders, min(2, len(contenders)))
+            # Select 1 from outsiders if available, otherwise from contenders
+            if outsiders:
+                bottom_selection = random.sample(outsiders, 1)
+            else:
+                bottom_selection = random.sample(contenders, 1)
+            
+            all_selected = top_selection + mid_selection + bottom_selection
+            
+            if len(all_selected) == 5:
+                combo = [horse['number'] for horse in all_selected]
+                confidence = sum(horse['form_score'] for horse in all_selected) / 5
+                
+                combinations.append({
+                    'horses': combo,
+                    'confidence': confidence,
+                    'pattern': 'quinte_balanced',
+                    'reasoning': f"Quinté: Balanced selection from top performers"
+                })
+        
+        # PATTERN 2: Top-heavy approach (focus on best horses)
+        top_horses = (elites + strongs + contenders)[:8]
+        for i in range(min(10, max_combinations)):
+            if len(top_horses) >= 5:
+                selected = random.sample(top_horses, 5)
+                combo = [horse['number'] for horse in selected]
+                confidence = sum(horse['form_score'] for horse in selected) / 5
+                
+                combinations.append({
+                    'horses': combo,
+                    'confidence': confidence,
+                    'pattern': 'quinte_top_focus',
+                    'reasoning': f"Quinté: Focus on highest rated horses"
+                })
+        
+        # Remove duplicates
+        unique_combinations = []
+        seen = set()
+        for combo in combinations:
+            combo_tuple = tuple(sorted(combo['horses']))
+            if combo_tuple not in seen:
+                seen.add(combo_tuple)
+                unique_combinations.append(combo)
+        
+        return sorted(unique_combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
+
+    def _generate_tierce_combinations(self, categories, max_combinations):
+        """Generate 3-number combinations for Tiercé - FIXED VERSION"""
+        combinations = []
+        
+        # Get available horses
+        elites = categories['elite'][:3] if categories['elite'] else []
+        strongs = categories['strong'][:4] if categories['strong'] else []
+        contenders = categories['contenders'][:5] if categories['contenders'] else []
+        
+        all_available = elites + strongs + contenders
+        if len(all_available) < 3:
+            return []  # Will trigger fallback
+        
+        # PATTERN: Mix of top performers
+        for i in range(min(15, max_combinations)):
+            selected = random.sample(all_available, 3)
+            combo = [horse['number'] for horse in selected]
+            confidence = sum(horse['form_score'] for horse in selected) / 3
+            
+            combinations.append({
+                'horses': combo,
+                'confidence': confidence,
+                'pattern': 'tierce_mixed',
+                'reasoning': f"Tiercé: Mixed selection from best available"
+            })
+        
+        return sorted(combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
+
+    def _generate_quarte_combinations(self, categories, max_combinations):
+        """Generate 4-number combinations for Quarté"""
+        combinations = []
+        
+        # Get available horses
+        elites = categories['elite'][:3] if categories['elite'] else []
+        strongs = categories['strong'][:4] if categories['strong'] else []
+        contenders = categories['contenders'][:6] if categories['contenders'] else []
+        
+        all_available = elites + strongs + contenders
+        if len(all_available) < 4:
+            return []  # Will trigger fallback
+        
+        # PATTERN: Mix of top performers
+        for i in range(min(15, max_combinations)):
+            selected = random.sample(all_available, 4)
+            combo = [horse['number'] for horse in selected]
+            confidence = sum(horse['form_score'] for horse in selected) / 4
+            
+            combinations.append({
+                'horses': combo,
+                'confidence': confidence,
+                'pattern': 'quarte_mixed',
+                'reasoning': f"Quarté: Mixed selection from best available"
+            })
+        
+        return sorted(combinations, key=lambda x: x['confidence'], reverse=True)[:max_combinations]
+
+    def _generate_quarte_plus_combinations(self, categories, max_combinations):
+        """Generate 4+1 combinations for Quarté+"""
+        combinations = []
+        
+        # Generate base quarte combinations
+        base_combinations = self._generate_quarte_combinations(categories, max_combinations // 2)
+        
+        for base_combo in base_combinations:
+            # Add a reserve horse from contenders
+            contenders = categories['contenders'][:6] if categories['contenders'] else []
+            if contenders:
+                for reserve in contenders[:3]:
+                    combo_with_reserve = base_combo['horses'] + [reserve['number']]
+                    confidence = (base_combo['confidence'] + reserve['form_score']) / 2
+                    
+                    combinations.append({
+                        'horses': combo_with_reserve,
+                        'confidence': confidence,
+                        'pattern': 'quarte_plus_with_reserve',
+                        'reasoning': f"Quarté+: Base combination + Reserve {reserve['name']}"
+                    })
+        
+        return combinations[:max_combinations]
+
+    def _generate_tierce_plus_combinations(self, categories, max_combinations):
+        """Generate 3+1 combinations for Tiercé+"""
+        combinations = []
+        
+        # Generate base tierce combinations
+        base_combinations = self._generate_tierce_combinations(categories, max_combinations // 2)
+        
+        for base_combo in base_combinations:
+            # Add a reserve horse from contenders
+            contenders = categories['contenders'][:5] if categories['contenders'] else []
+            if contenders:
+                for reserve in contenders[:3]:
+                    combo_with_reserve = base_combo['horses'] + [reserve['number']]
+                    confidence = (base_combo['confidence'] + reserve['form_score']) / 2
+                    
+                    combinations.append({
+                        'horses': combo_with_reserve,
+                        'confidence': confidence,
+                        'pattern': 'tierce_plus_with_reserve',
+                        'reasoning': f"Tiercé+: Base combination + Reserve {reserve['name']}"
+                    })
+        
+        return combinations[:max_combinations]
+
     def _analyze_race_horses(self, race_data):
         """Analyze each horse in the race"""
         analyzed_horses = []
@@ -371,122 +621,6 @@ class IntelligentCombinationGenerator:
             categories[category].sort(key=lambda x: x['form_score'], reverse=True)
         
         return categories
-    
-    def _generate_tierce_combinations(self, categories, max_combinations):
-        """Generate 3-number combinations for Tierce"""
-        combinations = []
-        
-        # PATTERN: Elite + Strong + Contender
-        for elite in categories['elite'][:3]:
-            for strong in categories['strong'][:4]:
-                for contender in categories['contenders'][:5]:
-                    if len(combinations) >= max_combinations:
-                        break
-                    
-                    combo = [elite['number'], strong['number'], contender['number']]
-                    confidence = (elite['form_score'] + strong['form_score'] + contender['form_score']) / 3
-                    
-                    combinations.append({
-                        'horses': combo,
-                        'confidence': confidence,
-                        'pattern': 'tierce_elite_strong_contender',
-                        'reasoning': f"Tierce: Elite {elite['name']} + Strong {strong['name']} + Value {contender['name']}"
-                    })
-        
-        return combinations[:max_combinations]
-    
-    def _generate_tierce_plus_combinations(self, categories, max_combinations):
-        """Generate 3+1 combinations for Tierce+"""
-        combinations = []
-        
-        # Generate base tierce combinations
-        base_combinations = self._generate_tierce_combinations(categories, max_combinations // 2)
-        
-        for base_combo in base_combinations:
-            # Add a reserve horse
-            for reserve in categories['contenders'][:3]:
-                combo_with_reserve = base_combo['horses'] + [reserve['number']]
-                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
-                
-                combinations.append({
-                    'horses': combo_with_reserve,
-                    'confidence': confidence,
-                    'pattern': 'tierce_plus_with_reserve',
-                    'reasoning': f"Tierce+: {base_combo['reasoning']} + Reserve {reserve['name']}"
-                })
-        
-        return combinations[:max_combinations]
-    
-    def _generate_quarte_combinations(self, categories, max_combinations):
-        """Generate 4-number combinations for Quarté"""
-        combinations = []
-        
-        # PATTERN: Elite + Strong + Contender + Value
-        for elite in categories['elite'][:2]:
-            for strong in categories['strong'][:3]:
-                for contender in categories['contenders'][:4]:
-                    for value in categories['contenders'][4:6]:
-                        if len(combinations) >= max_combinations:
-                            break
-                        
-                        combo = [elite['number'], strong['number'], contender['number'], value['number']]
-                        confidence = (elite['form_score'] + strong['form_score'] + contender['form_score'] + value['form_score']) / 4
-                        
-                        combinations.append({
-                            'horses': combo,
-                            'confidence': confidence,
-                            'pattern': 'quarte_balanced',
-                            'reasoning': f"Quarté: Elite {elite['name']} + Strong {strong['name']} + Contender {contender['name']} + Value {value['name']}"
-                        })
-        
-        return combinations[:max_combinations]
-    
-    def _generate_quarte_plus_combinations(self, categories, max_combinations):
-        """Generate 4+1 combinations for Quarté+"""
-        combinations = []
-        
-        # Generate base quarte combinations
-        base_combinations = self._generate_quarte_combinations(categories, max_combinations // 2)
-        
-        for base_combo in base_combinations:
-            # Add a reserve horse
-            for reserve in categories['contenders'][:3]:
-                combo_with_reserve = base_combo['horses'] + [reserve['number']]
-                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
-                
-                combinations.append({
-                    'horses': combo_with_reserve,
-                    'confidence': confidence,
-                    'pattern': 'quarte_plus_with_reserve',
-                    'reasoning': f"Quarté+: {base_combo['reasoning']} + Reserve {reserve['name']}"
-                })
-        
-        return combinations[:max_combinations]
-    
-    def _generate_quinte_combinations(self, categories, max_combinations):
-        """Generate 5-number combinations for Quinté"""
-        combinations = []
-        
-        # PATTERN: Elite + Strong + Contender + Value + Outsider
-        for elite in categories['elite'][:2]:
-            for strong in categories['strong'][:3]:
-                for contender in categories['contenders'][:3]:
-                    for value in categories['contenders'][3:5]:
-                        for outsider in categories['outsiders'][:2]:
-                            if len(combinations) >= max_combinations:
-                                break
-                            
-                            combo = [elite['number'], strong['number'], contender['number'], value['number'], outsider['number']]
-                            confidence = (elite['form_score'] + strong['form_score'] + contender['form_score'] + value['form_score'] + outsider['form_score']) / 5
-                            
-                            combinations.append({
-                                'horses': combo,
-                                'confidence': confidence,
-                                'pattern': 'quinte_complete',
-                                'reasoning': f"Quinté: Elite {elite['name']} + Strong {strong['name']} + Contender {contender['name']} + Value {value['name']} + Surprise {outsider['name']}"
-                            })
-        
-        return combinations[:max_combinations]
 
 # ========== DIVINE QUANTUM AI ENGINE ==========
 class DivineQuantumAI:
