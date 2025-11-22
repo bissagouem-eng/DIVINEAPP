@@ -14,13 +14,13 @@ import random
 import json
 from PyPDF2 import PdfReader
 
-# ========== PDF PARSER ==========
+# ========== PDF PARSER WITH GAME TYPE DETECTION ==========
 class PMUProgrammeParser:
     def __init__(self):
         self.current_race_data = None
     
     def parse_pdf(self, pdf_file):
-        """Extract race data from uploaded PDF"""
+        """Extract race data and detect game type from uploaded PDF"""
         try:
             # Read PDF content
             pdf_reader = PdfReader(pdf_file)
@@ -28,10 +28,38 @@ class PMUProgrammeParser:
             for page in pdf_reader.pages:
                 text_content += page.extract_text()
             
-            return self._extract_race_data(text_content)
+            # Detect game type from PDF content
+            game_type = self._detect_game_type(text_content)
+            
+            # Extract race data
+            race_data = self._extract_race_data(text_content)
+            race_data['game_type'] = game_type
+            
+            return race_data
         except Exception as e:
             st.error(f"❌ PDF parsing error: {e}")
             return self._get_fallback_data()
+    
+    def _detect_game_type(self, text):
+        """Detect the PMU game type from PDF text"""
+        text_upper = text.upper()
+        
+        # Game type detection patterns
+        if "QUINTÉ" in text_upper or "QUINTE" in text_upper:
+            return "QUINTE"  # 5 numbers
+        elif "QUARTÉ" in text_upper or "QUARTE" in text_upper:
+            if "+" in text_upper and "1" in text_upper:
+                return "QUARTE_PLUS"  # 4 numbers + 1
+            else:
+                return "QUARTE"  # 4 numbers
+        elif "TIERCÉ" in text_upper or "TIERCE" in text_upper:
+            if "+" in text_upper and "1" in text_upper:
+                return "TIERCE_PLUS"  # 3 numbers + 1
+            else:
+                return "TIERCE"  # 3 numbers
+        else:
+            # Default to most common game type
+            return "QUINTE"
     
     def _extract_race_data(self, text):
         """Extract horse data from PDF text"""
@@ -130,7 +158,8 @@ class PMUProgrammeParser:
                     'jockey': 'R. LAWY',
                     'last_5_races': [6, 1, 3, 2, 4]
                 }
-            ]
+            ],
+            'game_type': 'TIERCE'  # Default fallback
         }
 
 # ========== QUANTUM INTELLIGENCE ENGINE ==========
@@ -265,7 +294,9 @@ class IntelligentCombinationGenerator:
         self.quantum_engine = QuantumIntelligenceEngine()
     
     def generate_smart_combinations(self, race_data, max_combinations=25):
-        """Generate intelligent combinations based on real analysis"""
+        """Generate intelligent combinations based on game type"""
+        
+        game_type = race_data.get('game_type', 'TIERCE')
         
         # Step 1: Analyze all horses
         analyzed_horses = self._analyze_race_horses(race_data)
@@ -277,8 +308,17 @@ class IntelligentCombinationGenerator:
         # Step 3: Categorize horses by strength
         categories = self._categorize_horses(analyzed_horses)
         
-        # Step 4: Generate intelligent combinations
-        combinations = self._generate_structured_combinations(categories, max_combinations)
+        # Step 4: Generate combinations based on game type
+        if game_type == 'QUINTE':
+            combinations = self._generate_quinte_combinations(categories, max_combinations)
+        elif game_type == 'QUARTE':
+            combinations = self._generate_quarte_combinations(categories, max_combinations)
+        elif game_type == 'QUARTE_PLUS':
+            combinations = self._generate_quarte_plus_combinations(categories, max_combinations)
+        elif game_type == 'TIERCE_PLUS':
+            combinations = self._generate_tierce_plus_combinations(categories, max_combinations)
+        else:  # TIERCE (default)
+            combinations = self._generate_tierce_combinations(categories, max_combinations)
         
         return combinations, analyzed_horses
     
@@ -332,11 +372,11 @@ class IntelligentCombinationGenerator:
         
         return categories
     
-    def _generate_structured_combinations(self, categories, max_combinations):
-        """Generate combinations using intelligent patterns"""
+    def _generate_tierce_combinations(self, categories, max_combinations):
+        """Generate 3-number combinations for Tierce"""
         combinations = []
         
-        # PATTERN 1: Elite + Strong + Contender (Most reliable)
+        # PATTERN: Elite + Strong + Contender
         for elite in categories['elite'][:3]:
             for strong in categories['strong'][:4]:
                 for contender in categories['contenders'][:5]:
@@ -349,50 +389,103 @@ class IntelligentCombinationGenerator:
                     combinations.append({
                         'horses': combo,
                         'confidence': confidence,
-                        'pattern': 'elite_strong_contender',
-                        'reasoning': f"Elite {elite['name']} + Strong {strong['name']} + Value {contender['name']}"
+                        'pattern': 'tierce_elite_strong_contender',
+                        'reasoning': f"Tierce: Elite {elite['name']} + Strong {strong['name']} + Value {contender['name']}"
                     })
         
-        # PATTERN 2: Strong + Strong + Strong (Consistent performers)
-        strong_horses = categories['strong'][:6]
-        for i in range(len(strong_horses)):
-            for j in range(i+1, len(strong_horses)):
-                for k in range(j+1, len(strong_horses)):
-                    if len(combinations) >= max_combinations:
-                        break
-                    
-                    horse1, horse2, horse3 = strong_horses[i], strong_horses[j], strong_horses[k]
-                    combo = [horse1['number'], horse2['number'], horse3['number']]
-                    confidence = (horse1['form_score'] + horse2['form_score'] + horse3['form_score']) / 3
-                    
-                    combinations.append({
-                        'horses': combo,
-                        'confidence': confidence,
-                        'pattern': 'strong_trio',
-                        'reasoning': f"Three consistent performers: {horse1['name']}, {horse2['name']}, {horse3['name']}"
-                    })
+        return combinations[:max_combinations]
+    
+    def _generate_tierce_plus_combinations(self, categories, max_combinations):
+        """Generate 3+1 combinations for Tierce+"""
+        combinations = []
         
-        # PATTERN 3: Elite + Elite + Value (High-risk, high-reward)
-        if len(categories['elite']) >= 2:
-            for elite1 in categories['elite'][:2]:
-                for elite2 in categories['elite'][:2]:
-                    if elite1 != elite2:
-                        for contender in categories['contenders'][:4]:
+        # Generate base tierce combinations
+        base_combinations = self._generate_tierce_combinations(categories, max_combinations // 2)
+        
+        for base_combo in base_combinations:
+            # Add a reserve horse
+            for reserve in categories['contenders'][:3]:
+                combo_with_reserve = base_combo['horses'] + [reserve['number']]
+                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
+                
+                combinations.append({
+                    'horses': combo_with_reserve,
+                    'confidence': confidence,
+                    'pattern': 'tierce_plus_with_reserve',
+                    'reasoning': f"Tierce+: {base_combo['reasoning']} + Reserve {reserve['name']}"
+                })
+        
+        return combinations[:max_combinations]
+    
+    def _generate_quarte_combinations(self, categories, max_combinations):
+        """Generate 4-number combinations for Quarté"""
+        combinations = []
+        
+        # PATTERN: Elite + Strong + Contender + Value
+        for elite in categories['elite'][:2]:
+            for strong in categories['strong'][:3]:
+                for contender in categories['contenders'][:4]:
+                    for value in categories['contenders'][4:6]:
+                        if len(combinations) >= max_combinations:
+                            break
+                        
+                        combo = [elite['number'], strong['number'], contender['number'], value['number']]
+                        confidence = (elite['form_score'] + strong['form_score'] + contender['form_score'] + value['form_score']) / 4
+                        
+                        combinations.append({
+                            'horses': combo,
+                            'confidence': confidence,
+                            'pattern': 'quarte_balanced',
+                            'reasoning': f"Quarté: Elite {elite['name']} + Strong {strong['name']} + Contender {contender['name']} + Value {value['name']}"
+                        })
+        
+        return combinations[:max_combinations]
+    
+    def _generate_quarte_plus_combinations(self, categories, max_combinations):
+        """Generate 4+1 combinations for Quarté+"""
+        combinations = []
+        
+        # Generate base quarte combinations
+        base_combinations = self._generate_quarte_combinations(categories, max_combinations // 2)
+        
+        for base_combo in base_combinations:
+            # Add a reserve horse
+            for reserve in categories['contenders'][:3]:
+                combo_with_reserve = base_combo['horses'] + [reserve['number']]
+                confidence = (base_combo['confidence'] + reserve['form_score']) / 2
+                
+                combinations.append({
+                    'horses': combo_with_reserve,
+                    'confidence': confidence,
+                    'pattern': 'quarte_plus_with_reserve',
+                    'reasoning': f"Quarté+: {base_combo['reasoning']} + Reserve {reserve['name']}"
+                })
+        
+        return combinations[:max_combinations]
+    
+    def _generate_quinte_combinations(self, categories, max_combinations):
+        """Generate 5-number combinations for Quinté"""
+        combinations = []
+        
+        # PATTERN: Elite + Strong + Contender + Value + Outsider
+        for elite in categories['elite'][:2]:
+            for strong in categories['strong'][:3]:
+                for contender in categories['contenders'][:3]:
+                    for value in categories['contenders'][3:5]:
+                        for outsider in categories['outsiders'][:2]:
                             if len(combinations) >= max_combinations:
                                 break
                             
-                            combo = [elite1['number'], elite2['number'], contender['number']]
-                            confidence = (elite1['form_score'] + elite2['form_score'] + contender['form_score']) / 3
+                            combo = [elite['number'], strong['number'], contender['number'], value['number'], outsider['number']]
+                            confidence = (elite['form_score'] + strong['form_score'] + contender['form_score'] + value['form_score'] + outsider['form_score']) / 5
                             
                             combinations.append({
                                 'horses': combo,
                                 'confidence': confidence,
-                                'pattern': 'elite_duo_value',
-                                'reasoning': f"Elite duo {elite1['name']}/{elite2['name']} + value {contender['name']}"
+                                'pattern': 'quinte_complete',
+                                'reasoning': f"Quinté: Elite {elite['name']} + Strong {strong['name']} + Contender {contender['name']} + Value {value['name']} + Surprise {outsider['name']}"
                             })
         
-        # Sort by confidence and return top combinations
-        combinations.sort(key=lambda x: x['confidence'], reverse=True)
         return combinations[:max_combinations]
 
 # ========== DIVINE QUANTUM AI ENGINE ==========
@@ -463,12 +556,14 @@ def main():
         margin: 1rem 0;
         border: 1px solid rgba(255,255,255,0.2);
     }
-    .intelligence-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 0.5rem 0;
+    .game-badge {
+        background: linear-gradient(45deg, #FF6B00, #FF0000);
         color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -502,12 +597,24 @@ def main():
         if uploaded_file != st.session_state.last_uploaded_file:
             st.session_state.last_uploaded_file = uploaded_file
             
-            with st.spinner("🔍 Parsing PDF and extracting race data..."):
+            with st.spinner("🔍 Parsing PDF and detecting game type..."):
                 # Parse the ACTUAL uploaded PDF
                 race_data = st.session_state.quantum_ai.parse_uploaded_pdf(uploaded_file)
                 st.session_state.current_race_data = race_data
             
-            st.success(f"✅ PDF parsed successfully! Found {len(race_data['horses'])} horses")
+            game_type = race_data.get('game_type', 'TIERCE')
+            game_display_names = {
+                'TIERCE': 'Tiercé',
+                'TIERCE_PLUS': 'Tiercé+',
+                'QUARTE': 'Quarté', 
+                'QUARTE_PLUS': 'Quarté+',
+                'QUINTE': 'Quinté'
+            }
+            
+            st.success(f"✅ PDF parsed successfully! Detected: {game_display_names.get(game_type, game_type)} - {len(race_data['horses'])} horses")
+            
+            # Show game type badge
+            st.markdown(f'<div class="game-badge">🎯 {game_display_names.get(game_type, game_type)} DETECTED</div>', unsafe_allow_html=True)
             
             # Show extracted horse data
             with st.expander("📋 EXTRACTED HORSE DATA", expanded=True):
@@ -530,20 +637,21 @@ def main():
     
     if show_generate_button and st.button("🎯 GENERATE QUANTUM COMBINATIONS", type="primary"):
         race_data = st.session_state.current_race_data
+        game_type = race_data.get('game_type', 'TIERCE')
         
         with st.expander("⚛️ QUANTUM INTELLIGENCE ANALYSIS", expanded=True):
             col1, col2, col3, col4 = st.columns(4)
             with col1: 
-                st.metric("Horses Analyzed", len(race_data['horses']))
+                st.metric("Game Type", game_type)
             with col2: 
-                st.metric("Data Intelligence", "843K+", "Patterns")
+                st.metric("Horses Analyzed", len(race_data['horses']))
             with col3: 
-                st.metric("French Racing DNA", "100%", "Authentic")
+                st.metric("Data Intelligence", "843K+", "Patterns")
             with col4: 
                 st.metric("Analysis Complete", "✅", "Ready")
             
-            # Generate REAL intelligent combinations from ACTUAL PDF data
-            with st.spinner("🧠 Quantum AI analyzing race patterns..."):
+            # Generate intelligent combinations based on detected game type
+            with st.spinner(f"🧠 Quantum AI analyzing {game_type} patterns..."):
                 combinations, analyzed_horses = st.session_state.quantum_ai.generate_divine_combinations(race_data)
             
             # Display horse analysis
@@ -565,8 +673,8 @@ def main():
             
             # Display intelligent combinations
             st.markdown("### 🏆 QUANTUM COMBINATIONS")
-            # FIXED: Added missing closing parenthesis
-            st.info(f"🎯 Generated {len(combinations)} intelligent combinations from {len(race_data['horses'])} horses")
+            numbers_count = len(combinations[0]['horses']) if combinations else 0
+            st.info(f"🎯 Generated {len(combinations)} {game_type} combinations ({numbers_count} numbers) from {len(race_data['horses'])} horses")
             
             cols = st.columns(2)
             for idx, combo in enumerate(combinations[:12]):  # Show top 12
@@ -594,12 +702,14 @@ def main():
         # SAFE session state access
         if (st.session_state.current_race_data is not None and 
             len(st.session_state.current_race_data.get('horses', [])) > 0):
+            game_type = st.session_state.current_race_data.get('game_type', 'TIERCE')
+            st.success(f"**Game Type:** {game_type}")
             st.success(f"**Horses Loaded:** {len(st.session_state.current_race_data['horses'])}")
         else:
             st.warning("**Awaiting PDF Upload**")
         
         st.info("Quantum AI: **ACTIVE**")
-        st.info("PDF Parser: **READY**")
+        st.info("Game Detection: **READY**")
         st.info("Intelligence: **REAL**")
         
         if st.button("🔄 Clear & Process New PDF", use_container_width=True):
